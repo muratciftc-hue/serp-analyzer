@@ -105,9 +105,43 @@ Not: Ahrefs SERP overview bu feature'larin cogunu position ve URL
 yapisindan cikarabilir. Ek olarak keyword overview'daki SERP feature
 bilgilerini kullan.
 
-### Adim 5 — Her Rakip Sayfa Icin On-Page Analiz (WebFetch)
+### Adim 5 — Her Rakip Sayfa Icin On-Page Analiz (Cascade Fetch)
 
-SERP'teki her URL icin `WebFetch` ile sayfayi cek ve su metrikleri cikar:
+SERP'teki her URL icin sayfa icerigini al ve metrikleri cikar.
+**Sadece Ahrefs verisine guvenme — her sayfayi dogrudan fetch et.**
+
+#### Cascade Fetch Stratejisi (sirasyla dene):
+
+**Yontem 1 — WebFetch (varsayilan, en hizli)**
+WebFetch ile URL'i cek. Cogu statik ve SSR sayfa icin calisir.
+Basarisizlik isaretleri: "Pardon Our Interruption", "Enable JavaScript",
+"Access Denied", "403 Forbidden", "Just a moment", "Checking your browser",
+veya icerik <200 kelime geliyorsa → bir sonraki yonteme gec.
+
+**Yontem 2 — Google Cache**
+WebFetch ile Google'in onbellege alinmis surumunu dene:
+`https://webcache.googleusercontent.com/search?q=cache:[URL]`
+Not: Google cache her zaman mevcut olmayabilir.
+
+**Yontem 3 — Ahrefs Crawled Content**
+Eger Ahrefs MCP bagli ise `mcp__ahrefs__site-audit-page-content` ile
+Ahrefs'in crawl ettigi icerige bak. Ahrefs headless browser kullandigi
+icin JS-rendered sayfalari bile kapsar.
+
+**Yontem 4 — Chrome ile Fetch (son care)**
+Eger Chrome MCP (`mcp__Claude_in_Chrome__*`) bagli ise:
+- `tabs_create_mcp` ile yeni tab ac
+- `navigate` ile URL'ye git
+- `get_page_text` ile sayfa metnini al
+- `read_page` ile heading, link, schema yapisini al
+Bu yontem JS-rendered sayfalari ve bot korumali siteleri handler.
+Her sayfadan sonra tab'i kapat (`tabs_close_mcp`).
+
+**Hicbiri calismadiysa:**
+O satiri tabloda "N/A" olarak isaretle ama analizi DURDURMA.
+Rapor sonunda uyari ekle: "⚠️ X sayfa fetch edilemedi."
+
+#### Cikarilacak metrikler (her URL icin):
 
 1. **Word Count**: Body text'in kelime sayisi
 2. **H1 Count**: Sayfadaki H1 tag sayisi ve icerigi
@@ -118,8 +152,6 @@ SERP'teki her URL icin `WebFetch` ile sayfayi cek ve su metrikleri cikar:
    - Soru-cevap formati (dt/dd, accordion, details/summary) kontrolu
 5. **Schema Turu**: JSON-LD schema type'lari (Article, Product, FAQPage, HowTo, vb.)
 6. **Internal Link Count**: Ayni domain'e giden linklerin sayisi
-
-WebFetch basarisiz olursa (bot koruması, timeout vb.) o satiri "N/A" olarak isaretle.
 
 ### Adim 6 — Her Rakip Icin Backlink Analizi (Ahrefs)
 
@@ -276,9 +308,26 @@ On-page veriler: WebFetch ile HTML analizi.
 
 ## Onemli Kurallar
 
+### Veri Kaynaklari — Sadece Ahrefs'e Guvenme!
+- Ahrefs off-page veriler (DR, backlink, traffic, KD) icin kullan
+- On-page veriler (word count, H1/H2, FAQ, schema, internal link) icin
+  HER ZAMAN sayfayi dogrudan fetch et ve kendin analiz et
+- Ahrefs verisi ile kendi fetch verini karsilastir — tutarsizlik varsa
+  kendi fetch verini once tut (guncel veri)
+- Ahrefs bagli degilse veya API hatasi verirse, on-page analizi yine de
+  WebFetch/Chrome ile yap — raporu Ahrefs'siz de uretebilmelisin
+  (DR, backlink, traffic sutunlari "N/A" olur)
+
+### Fetch Kurallari
+- Cascade fetch sirasini takip et: WebFetch → Google Cache → Ahrefs Cache → Chrome
+- Bir yontem basarisiz olursa sessizce bir sonrakine gec
+- Hangi yontemle basarili oldugunu rapor sonunda belirt
+- Fetch basarisiz olan sayfalari tabloda "N/A" olarak goster, analizi DURDURMA
+- WebFetch ile sayfa cekme: paralel degil sirayla yap (rate limit korumasi)
+
+### API ve Format Kurallari
 - Ahrefs API'dan gelen monetary degerler (CPC, traffic value) USD **cent** cinsindendir — 100'e bolup goster
 - `mcp__ahrefs__doc` tool'unu HER Ahrefs tool'unu ilk kez kullanmadan once cagir
-- WebFetch ile sayfa cekilemezse (bot korumasi, timeout) o satiri "N/A" yaz, analizi durma
 - SERP overview'dan gelen `domain_rating` ve `refdomains` verilerini mumkunse dogrudan kullan (API tasarrufu)
 - DR>40 backlink count icin ek API call sadece detayli analiz istenirse yap
 - Brand keyword tespitinde domain'den brand cikarilamazsa (subdomain, path-only URL) kullaniciya sor
@@ -287,5 +336,4 @@ On-page veriler: WebFetch ile HTML analizi.
 - Turkiye disindaki ulkeler icin `country:us`, `country:de` vb. destekle
 - Raporu Turkce yaz (varsayilan), kullanici Ingilizce isterse Ingilizce yaz
 - En fazla 10 SERP sonucu analiz et
-- WebFetch ile sayfa cekme: paralel degil sirayla yap (rate limit korumasi)
 - Ahrefs render tool'larini (`render-data-table`, `render-scorecard`) mumkunse kullan
