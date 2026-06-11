@@ -14,7 +14,7 @@ argument-hint: "<keyword> [our-url] [country:tr]"
 license: MIT
 metadata:
   author: inbound-seo
-  version: "1.0.0"
+  version: "1.1.0"
   category: seo
   requires:
     - "Ahrefs MCP server (mcp__ahrefs__*)"
