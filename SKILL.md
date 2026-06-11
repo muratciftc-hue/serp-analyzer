@@ -110,36 +110,50 @@ bilgilerini kullan.
 SERP'teki her URL icin sayfa icerigini al ve metrikleri cikar.
 **Sadece Ahrefs verisine guvenme — her sayfayi dogrudan fetch et.**
 
-#### Cascade Fetch Stratejisi (sirasyla dene):
+#### Dual-Fetch Stratejisi (IKI KATMANLI — her URL icin)
 
-**Yontem 1 — WebFetch (varsayilan, en hizli)**
-WebFetch ile URL'i cek. Cogu statik ve SSR sayfa icin calisir.
-Basarisizlik isaretleri: "Pardon Our Interruption", "Enable JavaScript",
-"Access Denied", "403 Forbidden", "Just a moment", "Checking your browser",
-veya icerik <200 kelime geliyorsa → bir sonraki yonteme gec.
+**KRITIK**: WebFetch HTML'i markdown'a cevirirken `<script>` taglarini
+siler. Bu yuzden JSON-LD schema, meta description gibi veriler KAYBOLUR.
+Her URL icin iki katmanli fetch yap:
 
-**Yontem 2 — Google Cache**
-WebFetch ile Google'in onbellege alinmis surumunu dene:
-`https://webcache.googleusercontent.com/search?q=cache:[URL]`
-Not: Google cache her zaman mevcut olmayabilir.
+##### Katman A — Raw HTML (Schema + Meta Tags)
 
-**Yontem 3 — Ahrefs Crawled Content**
-Eger Ahrefs MCP bagli ise `mcp__ahrefs__site-audit-page-content` ile
-Ahrefs'in crawl ettigi icerige bak. Ahrefs headless browser kullandigi
-icin JS-rendered sayfalari bile kapsar.
+Bash tool ile `curl` komutu calistir:
+```bash
+curl -sL -A "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) \
+AppleWebKit/537.36" "[URL]" | python3 -c "
+import sys, re, json
+html = sys.stdin.read()
+blocks = re.findall(r'<script[^>]*type=\"application/ld\+json\"[^>]*>(.*?)</script>', html, re.DOTALL)
+schemas = []
+for b in blocks:
+    try:
+        d = json.loads(b.strip())
+        schemas.append(d.get('@type','unknown'))
+    except: pass
+meta = re.search(r'<meta[^>]*name=[\"']description[\"'][^>]*content=[\"'](.*?)[\"']', html, re.I)
+micro = re.findall(r'itemtype=[\"']https?://schema\.org/(\w+)[\"']', html)
+print(json.dumps({'json_ld': schemas, 'microdata': list(set(micro)), 'meta_desc': meta.group(1) if meta else None}))
+"
+```
 
-**Yontem 4 — Chrome ile Fetch (son care)**
-Eger Chrome MCP (`mcp__Claude_in_Chrome__*`) bagli ise:
-- `tabs_create_mcp` ile yeni tab ac
-- `navigate` ile URL'ye git
-- `get_page_text` ile sayfa metnini al
-- `read_page` ile heading, link, schema yapisini al
-Bu yontem JS-rendered sayfalari ve bot korumali siteleri handler.
-Her sayfadan sonra tab'i kapat (`tabs_close_mcp`).
+curl basarisiz olursa (bot korumasi, "Request Rejected"):
+→ Schema ve meta'yi "N/A (bot korumasi)" olarak isaretle
 
-**Hicbiri calismadiysa:**
-O satiri tabloda "N/A" olarak isaretle ama analizi DURDURMA.
-Rapor sonunda uyari ekle: "⚠️ X sayfa fetch edilemedi."
+##### Katman B — Icerik (Word Count, Headings, Links)
+
+Sirasyla dene:
+1. **WebFetch** — cogu site icin calisir
+2. **Google Cache** — `webcache.googleusercontent.com/search?q=cache:[URL]`
+3. **Ahrefs Cache** — `mcp__ahrefs__site-audit-page-content`
+4. **Chrome MCP** — `tabs_create_mcp` → `navigate` → `get_page_text` + `read_page`
+
+Hicbiri calismadiysa → "N/A" olarak isaretle, analizi DURDURMA.
+
+##### Veri Birlestirme
+- Schema → Katman A'dan (raw HTML, guvenilir)
+- Meta desc → Katman A'dan (raw HTML, guvenilir)
+- Word count, H1/H2, links → Katman B'den (WebFetch/Chrome)
 
 #### Cikarilacak metrikler (her URL icin):
 
@@ -147,10 +161,10 @@ Rapor sonunda uyari ekle: "⚠️ X sayfa fetch edilemedi."
 2. **H1 Count**: Sayfadaki H1 tag sayisi ve icerigi
 3. **H2 Count**: Sayfadaki H2 tag sayisi ve icerikleri
 4. **FAQ Var/Yok**: Sayfada FAQ bolumu var mi?
-   - JSON-LD FAQPage schema kontrolu
+   - JSON-LD FAQPage schema kontrolu (Katman A!)
    - HTML'de "FAQ", "Sikca Sorulan Sorular", "Frequently Asked" text kontrolu
    - Soru-cevap formati (dt/dd, accordion, details/summary) kontrolu
-5. **Schema Turu**: JSON-LD schema type'lari (Article, Product, FAQPage, HowTo, vb.)
+5. **Schema Turu**: JSON-LD + Microdata type'lari (Katman A!)
 6. **Internal Link Count**: Ayni domain'e giden linklerin sayisi
 
 ### Adim 6 — Her Rakip Icin Backlink Analizi (Ahrefs)
